@@ -1,0 +1,27 @@
+# Entornos virtuales
+elma_env/
+venv/
+env/
+.env
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de audio temporales y caché
+cache_audio/
+*.wav
+
+# Modelos descargados (Vosk, Piper)
+vosk-model*/
+*.onnx
+*.json
+
+# VS Code / IDEs
+.vscode/
+.idea/
+
+# Sistema Operativo
+.DS_Store
