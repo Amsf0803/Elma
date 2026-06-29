@@ -12,6 +12,10 @@ import edge_tts
 import threading 
 from datetime import datetime
 import hashlib
+import requests
+import re
+
+
 
 modelo = Model("vosk-model-small-es")
 q = queue.Queue()
@@ -114,6 +118,30 @@ def normalizar_numeros(texto):
             palabras[i] = mapa_numeros[palabra]
     return " ".join(palabras)
 
+
+def consultar_ollama(prompt):
+    hablar("Déjame le pregunto a los fierros, dame un segundo.")
+    try:
+        # Apunta al puerto local de Ollama. Cambia "llama3" por el modelo que tengas corriendo (ej. phi3, mistral)
+        url = "http://localhost:11434/api/generate"
+        data = {
+            "model": "llama3", 
+            "prompt": prompt + " Responde de forma muy breve, directa y sin usar formato markdown.",
+            "stream": False
+        }
+        response = requests.post(url, json=data).json()
+        respuesta_cruda = response['response']
+        
+        # Limpiamos asteriscos, hashtags y saltos de línea para que Laura (Piper) lo lea fluido
+        respuesta_limpia = re.sub(r'[*#_]', '', respuesta_cruda)
+        respuesta_limpia = respuesta_limpia.replace('\n', ' ')
+        
+        hablar(respuesta_limpia)
+    except Exception as e:
+        print(f"Error con Ollama: {e}")
+        hablar("Chale, no me pude conectar con el cerebro local. Revisa si Ollama está corriendo.")
+
+
 def ejecutar_comando(texto):
     global estado_elma
     texto = texto.lower()
@@ -133,7 +161,7 @@ def ejecutar_comando(texto):
 
     # --- MULTIMEDIA ---
     elif any(palabra in texto for palabra in ["siguiente", "cambia", "next", "pon otra"]):
-        hablar("Simon")
+        hablar("Simon" or "Orale pues" or "Sale" or "va" or "Nel") # Respuesta aleatoria
         subprocess.run(["playerctl", "next"])
         return True # Volver a dormir
         
@@ -205,6 +233,50 @@ def ejecutar_comando(texto):
             hablar("¿Qué quieres que cierre we?")
             estado_elma = "ESPERANDO_APP_CERRAR"
             return False
+
+    # --- IA / OLLAMA ---
+    elif "investiga" in texto or "dime" in texto or "qué es" in texto:
+        # Extraemos lo que sea que hayas dicho después de la palabra clave
+        if "investiga" in texto:
+            prompt = texto.split("investiga", 1)[-1].strip()
+        elif "qué es" in texto:
+            prompt = texto.split("qué es", 1)[-1].strip()
+        else:
+            prompt = texto.split("dime", 1)[-1].strip()
+            
+        if prompt:
+            # Lo mandamos a un hilo para que Elma no se quede congelada mientras Ollama genera el texto
+            threading.Thread(target=consultar_ollama, args=(prompt,), daemon=True).start()
+            return True
+        
+    # --- MODO FOCUS (POMODORO) ---
+    elif any(palabra in texto for palabra in ["modo focus", "modo concentración", "a trabajar", "ponme a jalar"]):
+        hablar("Sobres. Modo tryhard activado. Apagando distracciones.")
+        
+        # 1. Matamos el navegador (si necesitas Zen para programar, comenta esta línea)
+        subprocess.run(["killall", "zen-browser"], stderr=subprocess.DEVNULL)
+        
+        # 2. Ajustamos volumen a un nivel moderado para no aturdir
+        subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "40%"])
+        
+        # 3. Lanzamos Spotify y le damos play
+        subprocess.Popen(["spotify"])
+        def iniciar_focus_music():
+            time.sleep(4)
+            # Opcional: si sabes cómo pasarle un URI de playlist por línea de comandos, sería aquí.
+            # Por ahora le da play a lo último que escuchabas.
+            subprocess.run(["playerctl", "-p", "spotify", "play"])
+        threading.Thread(target=iniciar_focus_music, daemon=True).start()
+        
+        # 4. Iniciamos el Pomodoro de 25 minutos
+        def pomodoro_tracker():
+            time.sleep(25 * 60)
+            hablar("¡Tiempo padre santo! Ya pasaron 25 minutos. Tómate 5 minutitos de descanso, estira las piernas o toma agua.")
+        threading.Thread(target=pomodoro_tracker, daemon=True).start()
+        
+        return True
+
+
 
     # --- SISTEMA ---
     elif any(palabra in texto for palabra in ["bloquea", "lock","regreso","ahorita","ya vuelvo", "seguridad"]):
